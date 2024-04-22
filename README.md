@@ -2,6 +2,10 @@
 
 ### Goal: Transfer Learning for Jet Physics
 
-##### Requirements
+#### Requirements
 
-This code assumes you have [this dataset](https://zenodo.org/records/2603256) (test.h5, train.h5, and val.h5) downloaded locally in the top-level (DL-Final-Project) folder. These datasets take up about 1.5 Gb of disk space.
+The GitHub repo comes with a reduced dataset (```reduced_atlas_dataset.h5```), for the purpose of getting familiar with the data. However, one will eventually have to download the full-size data from [the CERN website](https://opendata.cern.ch/record/15013).
+
+#### Structure
+
+All structural code is stored in appropriate ```.py``` files. However, for a more comfortable user experience, we provide a Jupyter Notebook where the data will be accessed, the models will be trained, and the main results of this project will be presented.
