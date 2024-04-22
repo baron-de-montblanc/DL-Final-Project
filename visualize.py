@@ -9,18 +9,22 @@ from helper import human_feature, features_by_attribute
 
 
 
-def plot_1D_distributions(data, labels, attribute):
+def plot_1D_distributions(data, labels, features, nbins):
     """
     Plot histograms of our data given the desired attribute (from 'jet' or 'constituents')
     """
 
-    features = features_by_attribute(attribute)
-
     fig, axes = plt.subplots(2, 2, figsize=(10, 6))
 
     # Dynamic range of x depending on feature (hard-coded)
-    xmin = [0,-2.5,-4.5,0]
-    xmax = [5e6,2.5,4.5,5e5]
+    if 'fjet_clus_pt' not in features:
+        xmin = [0,-2.5,-4,0]
+        xmax = [5e6,2.5,4,5e5]
+    else:
+        xmin = [0,-4,-4,0]
+        xmax = [5,4,4,5]
+
+    xlabels = ["MeV", "rad", "rad", "MeV"]
 
     # Set colors (for aesthetic purposes!)
     c1 = sns.color_palette()[2]
@@ -37,16 +41,19 @@ def plot_1D_distributions(data, labels, attribute):
             one_labels = labels.astype(bool)
             zero_labels = np.invert(one_labels)
 
-            d_one = d[one_labels]
-            d_zero = d[zero_labels]
+            d_one = d[one_labels].flatten()
+            d_zero = d[zero_labels].flatten()
+
+            # Get rid of zeros (since they most likely just correspond to zero-padded elements)
+            d_one = d_one[d_one != 0]
+            d_zero = d_zero[d_zero != 0]
 
             # Plotting
-            axes[i,j].hist(d_one, bins='auto', density=True, alpha=0.8, color=c1)
-            axes[i,j].hist(d_zero, bins='auto', density=True, alpha=0.8, color=c2)
+            axes[i,j].hist(d_one, bins=nbins, density=True, alpha=0.8, color=c1, range=(xmin[f_idx],xmax[f_idx]))
+            axes[i,j].hist(d_zero, bins=nbins, density=True, alpha=0.8, color=c2, range=(xmin[f_idx],xmax[f_idx]))
             axes[i,j].set_title(f'Distribution of {human_feature(f)} by label')
-            axes[i,j].set_xlabel(human_feature(f))
+            axes[i,j].set_xlabel(f"{human_feature(f)} ({xlabels[f_idx]})")
             axes[i,j].set_ylabel('Density')
-            axes[i,j].set_xlim(xmin[f_idx],xmax[f_idx])
             axes[i,j].legend(title='Label', labels=['Top Quark (signal)', 'Background'])
 
     plt.tight_layout()
