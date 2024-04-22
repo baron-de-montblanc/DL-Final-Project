@@ -80,7 +80,15 @@ def get_data(filename, attribute):
     for k in use_keys:
         data.append(mapping[k])
 
-    return np.asarray(data).T, np.asarray(mapping["labels"]), np.asarray(mapping["training_weights"]), np.asarray(use_keys)
+    if attribute == "jet":
+        data = np.asarray(data).T
+
+    elif attribute == "constituents":
+        data = np.asarray(data)
+        # reshape to make sure the input_size is first
+        data = np.reshape(data, (data.shape[1],data.shape[0],data.shape[2]))
+
+    return data, np.asarray(mapping["labels"]), np.asarray(mapping["training_weights"]), np.asarray(use_keys)
 
 
 def preprocess_data(data, labels, train_split, val_split, seed):
