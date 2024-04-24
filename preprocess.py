@@ -2,7 +2,9 @@ import numpy as np
 import h5py
 import hdf5plugin
 import torch
-from torch.utils.data import TensorDataset, random_split
+from torch.utils.data import TensorDataset, random_split, Subset
+from torch_geometric.nn import knn_graph
+from torch_geometric.data import Data
 
 
 # ----------- Preprocessing Pipeline for the ATLAS Jet Tagging Dataset ---------------
@@ -91,7 +93,11 @@ def get_data(filename, attribute):
     return data, np.asarray(mapping["labels"]), np.asarray(mapping["training_weights"]), np.asarray(use_keys)
 
 
-def preprocess_data(data, labels, train_split, val_split, seed):
+
+# --------------------- FCNN-specific functions -------------------------------------------
+
+
+def preprocess_split(data, labels, train_split, val_split, seed=None):
     """
     Given data of shape [INPUT_SIZE, NUM_FEATURES] and labels of shape [INPUT_SIZE]
     Apply basic preprocessing steps:
@@ -101,18 +107,17 @@ def preprocess_data(data, labels, train_split, val_split, seed):
 
     returns: training_dataset, val_dataset, test_dataset: PyTorch TensorSubset objects
     """
+    # Cast to tensor
+    data = torch.tensor(data, dtype=torch.float32)
+    labels = torch.tensor(labels, dtype=torch.long)
 
     # Standardization (mean=0, std=1)
     mean = torch.mean(data, dim=0)
     std = torch.std(data, dim=0)
     data_standardized = (data - mean) / std
 
-    # Cast to PyTorch tensors
-    data = torch.tensor(data, dtype=torch.float32)
-    labels = torch.tensor(labels, dtype=torch.long)
-
     # Wrap into a TensorDataset
-    dataset = TensorDataset(data, labels)
+    dataset = TensorDataset(data_standardized, labels)
 
     # Split into train, validation, and test sets
     total_length = len(dataset)
@@ -120,6 +125,50 @@ def preprocess_data(data, labels, train_split, val_split, seed):
     val_length = int(val_split * total_length)
     test_length = total_length - train_length - val_length  # To handle any rounding issues
 
-    training_dataset, val_dataset, test_dataset = random_split(dataset, [train_length, val_length, test_length], generator=torch.Generator().manual_seed(seed))
+    if seed:
+        training_dataset, val_dataset, test_dataset = random_split(dataset, [train_length, val_length, test_length], generator=torch.Generator().manual_seed(seed))
+    else:
+        training_dataset, val_dataset, test_dataset = random_split(dataset, [train_length, val_length, test_length])
 
     return training_dataset, val_dataset, test_dataset
+
+
+
+# ------------------------ GNN-specific functions -------------------------------------
+
+
+
+def prepare_graphs(data, labels,k):
+    """
+    Given data and labels, use KNN algorithm to create a graph
+
+    k: number of nearest neighbors (int)
+
+    Adapted from the PHYS 2550 Hands-On Session for Lecture 21
+    """
+
+    graphs = []
+    for i in range(len(labels)):
+        x = torch.tensor(data[i].T, dtype=torch.float)
+        edge_index = knn_graph(x, k=k, loop=False)
+        graph = Data(x=x, edge_index=edge_index, y=labels[i])
+        graphs.append(graph)
+
+    return graphs
+
+
+def split_graphs(graph_list, training_split, val_split):
+    """
+    Given a GraphDataset object, split it into training, validation, and test sets
+    """
+
+    # Calculate sizes for each split
+    total_count = len(graph_list)
+    train_count = int(0.8 * total_count)
+    valid_count = int(0.1 * total_count)
+    test_count = total_count - train_count - valid_count
+
+    # Perform the split using random_split
+    train_dataset, valid_dataset, test_dataset = random_split(graph_list, [train_count, valid_count, test_count])
+
+    return train_dataset, valid_dataset, test_dataset
