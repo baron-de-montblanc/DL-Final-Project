@@ -11,7 +11,7 @@ from torch_geometric.nn import EdgeConv, global_max_pool
 
 class TeacherFCNN(nn.Module):
 
-    def __init__(self, num_features, dropout_rate=0.4):
+    def __init__(self, num_features, dropout_rate=0.5):
         super(TeacherFCNN, self).__init__()
         self.fc1 = nn.Linear(num_features, 256)
         self.drop1 = nn.Dropout(dropout_rate)
@@ -80,7 +80,7 @@ class TeacherGNN(torch.nn.Module):
         #print("After fc1 shape:", x.shape)
         x = self.out(x)
         # print("Output shape:", x.shape)  # Debug output shape
-        return F.log_softmax(x, dim=1)
+        return F.sigmoid(x)
 
 
 
@@ -100,47 +100,62 @@ class StudentGNN(nn.Module):
 # ------------------------- Define training and testing loops (FCNN) ------------------
 
 
-def train_one_epoch(model, device, train_loader, optimizer, criterion, acc_metric):
+def train_one_epoch(model, device, train_loader, optimizer, criterion):
     model.train()
 
     total_loss = 0
-    accuracy_metric = acc_metric.to(device)
-    for data, target in train_loader:
-        data, target = data.to(device), target.to(device)
+    correct_predictions = 0
+    total_samples = 0
+
+    for data, target, weights in train_loader:
+        data, target, weights = data.to(device), target.to(device), weights.to(device)
         optimizer.zero_grad()
         output = model(data)
         output = output.squeeze(1)  # flatten the output
+
         loss = criterion(output, target.float())
-        loss.backward()
+        weighted_loss = (loss * weights).mean()  # Apply weights and average
+        weighted_loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-        accuracy_metric(output, target.float())
+        total_loss += weighted_loss.item()
+        
+        # Manually calculate binary accuracy
+        predicted = (output >= 0.5).float()
+        correct_predictions += (predicted == target).sum().item()
+        total_samples += target.size(0)
 
     avg_loss = total_loss/len(train_loader)
-    avg_acc = accuracy_metric.compute()
+    avg_acc = correct_predictions / total_samples
     return avg_loss, avg_acc
 
 
 
-def test(model, device, test_loader, criterion, acc_metric):
+def test(model, device, test_loader, criterion):
     model.eval()
 
     total_loss = 0
-    accuracy_metric = acc_metric.to(device)
+    correct_predictions = 0
+    total_samples = 0
+
     with torch.no_grad():
-      for data, target in test_loader:
-          data, target = data.to(device), target.to(device)
+      for data, target, weights in test_loader:
+        data, target, weights = data.to(device), target.to(device), weights.to(device)
 
-          output = model(data)
-          output = output.squeeze(1)  # flatten the output
-          loss = criterion(output, target.float())
+        output = model(data)
+        output = output.squeeze(1)  # flatten the output
+        loss = criterion(output, target.float())
+        weighted_loss = (loss * weights).mean()
 
-          total_loss += loss.item()
-          accuracy_metric(output, target.float())
+        total_loss += weighted_loss.item()
+        
+        # Manually calculate binary accuracy
+        predicted = (output >= 0.5).float()
+        correct_predictions += (predicted == target).sum().item()
+        total_samples += target.size(0)
 
     avg_loss = total_loss/len(test_loader)
-    avg_acc = accuracy_metric.compute()
+    avg_acc = correct_predictions / total_samples
     return avg_loss, avg_acc
 
 
@@ -148,46 +163,67 @@ def test(model, device, test_loader, criterion, acc_metric):
 # ------------------------- Define training and testing loops (GNN) ------------------
 
 
-def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion, acc_metric):
+def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
     model.train()
 
     total_loss = 0
-    accuracy_metric = acc_metric.to(device)
+    correct_predictions = 0
+    total_samples = 0
+
     for data in train_loader:
         data = data.to(device)
-        target = torch.tensor(np.round(data.y), dtype=torch.long)  # export target to tensor
+        weights = data.weight
+        target = torch.tensor(data.y, dtype=torch.float32, device=device)
         optimizer.zero_grad()
+
         output = model(data)
         output = output.squeeze(1)  # flatten the output
-        loss = criterion(output, target.float())
-        loss.backward()
+
+        loss = criterion(output, target)
+        weighted_loss = (loss * weights).mean()  # Apply weights and average
+        weighted_loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-        accuracy_metric(output, target)
+        total_loss += weighted_loss.item()
+
+        # Manually calculate binary accuracy
+        predicted = (output >= 0.5).float()
+        correct_predictions += (predicted == target).sum().item()
+        total_samples += target.size(0)
 
     avg_loss = total_loss/len(train_loader)
-    avg_acc = accuracy_metric.compute()
+    avg_acc = correct_predictions / total_samples
+
     return avg_loss, avg_acc
 
 
 
-def test_gnn(model, device, test_loader, criterion, acc_metric):
+def test_gnn(model, device, test_loader, criterion):
     model.eval()
 
     total_loss = 0
-    accuracy_metric = acc_metric.to(device)
+    correct_predictions = 0
+    total_samples = 0
+
     with torch.no_grad():
       for data in test_loader:
-          data = data.to(device)
-          target = torch.tensor(np.round(data.y), dtype=torch.long)  # export target to tensor
-          output = model(data)
-          output = output.squeeze(1)  # flatten the output
-          loss = criterion(output, target.float())
+        data = data.to(device)
+        weights = data.weight
+        target = torch.tensor(data.y, dtype=torch.float32)
+        output = model(data)
 
-          total_loss += loss.item()
-          accuracy_metric(output, target)
+        output = output.squeeze(1)  # flatten the output
+        loss = criterion(output, target)
+        weighted_loss = (loss * weights).mean()  # Apply weights and average
+
+        total_loss += weighted_loss.item()
+
+        # Manually calculate binary accuracy
+        predicted = (output >= 0.5).float()
+        correct_predictions += (predicted == target).sum().item()
+        total_samples += target.size(0)
 
     avg_loss = total_loss/len(test_loader)
-    avg_acc = accuracy_metric.compute()
+    avg_acc = correct_predictions / total_samples
+
     return avg_loss, avg_acc
