@@ -2,8 +2,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import Sequential, Linear, ReLU
+from torch.nn import Sequential, Linear, ReLU, BatchNorm1d
 from torch_geometric.nn import EdgeConv, global_max_pool
+from sklearn.metrics import roc_curve, auc, accuracy_score
 
 
 # --------------- Define FCNN Models -----------------------
@@ -61,26 +62,68 @@ class TeacherGNN(torch.nn.Module):
         super(TeacherGNN, self).__init__()
         # The input feature dimension is 4 ('clus_pt', 'clus_eta', 'clus_phi', 'clus_E')
         # Ensure the MLP inside EdgeConv correctly transforms input features
-        self.conv1 = EdgeConv(Sequential(Linear(2*4, 64), ReLU(), Linear(64, 64)), aggr='max')
-        self.conv2 = EdgeConv(Sequential(Linear(64*2, 128), ReLU(), Linear(128, 128)), aggr='max')
-        self.fc1 = Linear(128, 64)
-        self.out = Linear(64, 1)
+        
+        self.conv1 = EdgeConv(
+            Sequential(
+                Linear(2*4, 64),
+                BatchNorm1d(64),
+                ReLU(), 
+                Linear(64, 64),
+                BatchNorm1d(64),
+                ReLU(),
+                Linear(64, 64),
+                BatchNorm1d(64),
+                ReLU(),
+            ), 
+            aggr='mean')
+        
+        self.conv2 = EdgeConv(
+            Sequential(
+                Linear(64*2, 128),
+                BatchNorm1d(128),
+                ReLU(), 
+                Linear(128, 128),
+                BatchNorm1d(128),
+                ReLU(),
+                Linear(128, 128),
+                BatchNorm1d(128),
+                ReLU(),
+            ), 
+            aggr='mean')
+        
+        self.conv3 = EdgeConv(
+            Sequential(
+                Linear(128*2, 256),
+                BatchNorm1d(256),
+                ReLU(), 
+                Linear(256, 256),
+                BatchNorm1d(256),
+                ReLU(),
+                Linear(256, 256),
+                BatchNorm1d(256),
+                ReLU(),
+            ), 
+            aggr='mean')
+        
+        self.fc1 = Linear(256, 256)
+        self.dropout = nn.Dropout(0.1)
+        self.out = Linear(256, 2)
 
 
     def forward(self, data):
+        
         x, edge_index = data.x, data.edge_index
-        #print("Input x shape:", x.shape)
+
         x = F.relu(self.conv1(x, edge_index))
-        #print("After conv1 shape:", x.shape)
         x = F.relu(self.conv2(x, edge_index))
-        #print("After conv2 shape:", x.shape)
+        x = F.relu(self.conv3(x, edge_index))
+
         x = global_max_pool(x, data.batch)
-        #print("After global max pool shape:", x.shape)
-        x = F.relu(self.fc1(x))
-        #print("After fc1 shape:", x.shape)
+
+        x = self.dropout(F.relu(self.fc1(x)))
         x = self.out(x)
-        # print("Output shape:", x.shape)  # Debug output shape
-        return F.sigmoid(x)
+
+        return x
 
 
 
@@ -167,32 +210,28 @@ def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
     model.train()
 
     total_loss = 0
-    correct_predictions = 0
-    total_samples = 0
+    all_labels, all_preds = [], []
 
     for data in train_loader:
-        data = data.to(device)
-        weights = data.weight
-        target = torch.tensor(data.y, dtype=torch.float32, device=device)
+        data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
         optimizer.zero_grad()
-
+        
         output = model(data)
-        output = output.squeeze(1)  # flatten the output
-
+        
         loss = criterion(output, target)
         weighted_loss = (loss * weights).mean()  # Apply weights and average
+
         weighted_loss.backward()
         optimizer.step()
-
+        
         total_loss += weighted_loss.item()
-
-        # Manually calculate binary accuracy
-        predicted = (output >= 0.5).float()
-        correct_predictions += (predicted == target).sum().item()
-        total_samples += target.size(0)
-
-    avg_loss = total_loss/len(train_loader)
-    avg_acc = correct_predictions / total_samples
+        
+        _, preds = torch.max(output, dim=1)
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(data.y.cpu().numpy())
+        
+    avg_loss = total_loss / len(train_loader)
+    avg_acc = accuracy_score(all_labels, all_preds)
 
     return avg_loss, avg_acc
 
@@ -202,28 +241,24 @@ def test_gnn(model, device, test_loader, criterion):
     model.eval()
 
     total_loss = 0
-    correct_predictions = 0
-    total_samples = 0
+    all_labels, all_preds = [], []
 
     with torch.no_grad():
-      for data in test_loader:
-        data = data.to(device)
-        weights = data.weight
-        target = torch.tensor(data.y, dtype=torch.float32)
-        output = model(data)
+        for data in test_loader:
+            data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
+            
+            output = model(data)
 
-        output = output.squeeze(1)  # flatten the output
-        loss = criterion(output, target)
-        weighted_loss = (loss * weights).mean()  # Apply weights and average
+            loss = criterion(output, target)
+            weighted_loss = (loss * weights).mean()  # Apply weights and average
 
-        total_loss += weighted_loss.item()
+            total_loss += weighted_loss.item()
 
-        # Manually calculate binary accuracy
-        predicted = (output >= 0.5).float()
-        correct_predictions += (predicted == target).sum().item()
-        total_samples += target.size(0)
+            _, preds = torch.max(output, dim=1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(data.y.cpu().numpy())
 
     avg_loss = total_loss/len(test_loader)
-    avg_acc = correct_predictions / total_samples
+    avg_acc = accuracy_score(all_labels, all_preds)
 
     return avg_loss, avg_acc

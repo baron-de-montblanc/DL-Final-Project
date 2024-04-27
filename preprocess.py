@@ -166,8 +166,9 @@ def prepare_graphs(data, labels, weights, k):
     graphs = []
     for i in range(len(labels)):
         x = torch.tensor(data[i].T, dtype=torch.float)
+        label = torch.tensor([int(labels[i])], dtype=torch.long)
         edge_index = knn_graph(x, k=k, loop=False)
-        graph = WeightedData(x=x, edge_index=edge_index, y=labels[i], weight=weight_tensor[i])
+        graph = WeightedData(x=x, edge_index=edge_index, y=label, weight=weight_tensor[i])
         graphs.append(graph)
 
     return graphs
