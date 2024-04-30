@@ -26,35 +26,7 @@ def list_contents(group, prefix=''):
             print(f' - Dataset shape: {item.shape}, Dataset type: {item.dtype}')
 
 
-
-
-def extract(filename, verbose=False):
-    """
-    Given the h5 file containing the ATLAS data, extract all the data.
-
-    Params:
-    ------------------------------
-    filename: path (str) to h5 file
-    verbose: print extra information? (bool, default False)
-
-    Returns:
-    ------------------------------
-    dictionary mapping the key name to the data it contains
-    """
-
-    mapping = {}
-    with h5py.File(filename, "r") as f:
-        if verbose:
-            list_contents(f)
-
-        for key in f.keys():
-
-            mapping[key] = f[key][:]
-
-    return mapping
-
-
-def get_data(filename, attribute):
+def get_data(filename, attribute, verbose=False):
     """
     Given the h5 file containing the ATLAS data, extract all the data corresponding
     to the appropriate attribute
@@ -63,7 +35,7 @@ def get_data(filename, attribute):
 
     Return the data, labels, weights, and feature names
     """
-
+    
     jet_keys = ['fjet_pt', 'fjet_eta', 'fjet_phi', 'fjet_m']
     const_keys = ['fjet_clus_pt', 'fjet_clus_eta', 'fjet_clus_phi', 'fjet_clus_E']
     hl_keys = ['fjet_C2', 'fjet_D2', 
@@ -76,11 +48,22 @@ def get_data(filename, attribute):
     
     use_keys = jet_keys if attribute == 'jet' else (const_keys if attribute == 'constituents' else (hl_keys if attribute == 'high_level' else None))
     
-    mapping = extract(filename)
-
     data = []
-    for k in use_keys:
-        data.append(mapping[k])
+    with h5py.File(filename, "r") as f:
+        if verbose:
+            list_contents(f)
+
+        for key in f.keys():
+
+            if key in use_keys:
+                data.append(f[key][:])
+                
+        try:  # the column name here isn't always consistent
+            weights = np.asarray(f["training_weights"][:])
+        except:
+            weights = np.asarray(f["weights"][:])
+            
+        labels = np.asarray(f["labels"][:])
 
     if attribute == "jet":
         data = np.asarray(data).T
@@ -90,7 +73,7 @@ def get_data(filename, attribute):
         # reshape to make sure the input_size is first
         data = np.reshape(data, (data.shape[1],data.shape[0],data.shape[2]))
 
-    return data, np.asarray(mapping["labels"]), np.asarray(mapping["training_weights"]), np.asarray(use_keys)
+    return data, labels, weights, np.asarray(use_keys)
 
 
 
