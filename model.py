@@ -12,12 +12,16 @@ from sklearn.metrics import roc_curve, auc, accuracy_score
 
 class TeacherFCNN(nn.Module):
 
-    def __init__(self, num_features, dropout_rate=0.5):
+    def __init__(self, num_features, dropout_rate=0.4):
         super(TeacherFCNN, self).__init__()
         self.fc1 = nn.Linear(num_features, 256)
+        self.bn1 = nn.BatchNorm1d(256)
         self.drop1 = nn.Dropout(dropout_rate)
+
         self.fc2 = nn.Linear(256, 128)
+        self.bn2 = nn.BatchNorm1d(128)
         self.drop2 = nn.Dropout(dropout_rate)
+
         self.fc3 = nn.Linear(128, 1)
         self.activ = nn.LeakyReLU()
 
@@ -26,10 +30,12 @@ class TeacherFCNN(nn.Module):
         x = x.view(x.size(0), -1)
 
         x = self.fc1(x)
+        x = self.bn1(x)
         x = self.activ(x)
         x = self.drop1(x)
 
         x = self.fc2(x)
+        x = self.bn2(x)
         x = self.activ(x)
         x = self.drop2(x)
 
@@ -39,16 +45,36 @@ class TeacherFCNN(nn.Module):
 
 
 class StudentFCNN(nn.Module):
-    def __init__(self, dropout_rate=0.4):
-        super(StudentFCNN, self).__init__()
 
-        # TODO: Initialize layers and hyperparameters
-        pass
+    def __init__(self, num_features, dropout_rate=0.4):
+        super(StudentFCNN, self).__init__()
+        self.fc1 = nn.Linear(num_features, 256)
+        self.bn1 = nn.BatchNorm1d(256)
+        self.drop1 = nn.Dropout(dropout_rate)
+
+        self.fc2 = nn.Linear(256, 128)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.drop2 = nn.Dropout(dropout_rate)
+
+        self.fc3 = nn.Linear(128, 1)
+        self.activ = nn.LeakyReLU()
 
     def forward(self, x):
+        # Flatten if necessary
+        x = x.view(x.size(0), -1)
 
-        # TODO: initiate one forward pass
-        pass
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.activ(x)
+        x = self.drop1(x)
+
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.activ(x)
+        x = self.drop2(x)
+
+        x = torch.sigmoid(self.fc3(x))
+        return x
 
 
 # --------------- Define GNN Models -----------------------
@@ -225,11 +251,13 @@ def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
         optimizer.step()
         
         total_loss += weighted_loss.item()
+
+        print(output)
         
         _, preds = torch.max(output, dim=1)
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(data.y.cpu().numpy())
-        
+
     avg_loss = total_loss / len(train_loader)
     avg_acc = accuracy_score(all_labels, all_preds)
 

@@ -4,7 +4,8 @@ import hdf5plugin
 import torch
 from torch.utils.data import TensorDataset, random_split, Subset
 from torch_geometric.nn import knn_graph
-from torch_geometric.data import Data, Dataset
+from torch_geometric.data import Data, DataLoader
+from helper import features_by_attribute
 
 
 # ----------- Preprocessing Pipeline for the ATLAS Jet Tagging Dataset ---------------
@@ -36,19 +37,10 @@ def get_data(filename, attribute, verbose=False):
     Return the data, labels, weights, and feature names
     """
     
-    jet_keys = ['fjet_pt', 'fjet_eta', 'fjet_phi', 'fjet_m']
-    const_keys = ['fjet_clus_pt', 'fjet_clus_eta', 'fjet_clus_phi', 'fjet_clus_E']
-    hl_keys = ['fjet_C2', 'fjet_D2', 
-               'fjet_ECF1', 'fjet_ECF2', 
-               'fjet_ECF3', 'fjet_L2', 
-               'fjet_L3', 'fjet_Qw', 
-               'fjet_Split12', 'fjet_Split23', 
-               'fjet_Tau1_wta', 'fjet_Tau2_wta', 
-               'fjet_Tau3_wta', 'fjet_Tau4_wta', 'fjet_ThrustMaj']
-    
-    use_keys = jet_keys if attribute == 'jet' else (const_keys if attribute == 'constituents' else (hl_keys if attribute == 'high_level' else None))
+    use_keys = features_by_attribute(attribute)
     
     data = []
+    ordered_keys = []  # since the dataset's native ordering differs from mine
     with h5py.File(filename, "r") as f:
         if verbose:
             list_contents(f)
@@ -57,6 +49,7 @@ def get_data(filename, attribute, verbose=False):
 
             if key in use_keys:
                 data.append(f[key][:])
+                ordered_keys.append(key)
                 
         try:  # the column name here isn't always consistent
             weights = np.asarray(f["training_weights"][:])
@@ -73,7 +66,7 @@ def get_data(filename, attribute, verbose=False):
         # reshape to make sure the input_size is first
         data = np.reshape(data, (data.shape[1],data.shape[0],data.shape[2]))
 
-    return data, labels, weights, np.asarray(use_keys)
+    return data, labels, weights, np.asarray(ordered_keys)
 
 
 
@@ -136,23 +129,35 @@ class WeightedData(Data):
         self.weight = weight
 
 
-def prepare_graphs(data, labels, weights, k):
+def prepare_graphs(data, labels, weights, k, device, batch_size=64):
     """
-    Given data and labels, use KNN algorithm to create a graph
-
-    k: number of nearest neighbors (int)
-    weights: weighting provided by ATLAS dataset
-
-    Adapted from the PHYS 2550 Hands-On Session for Lecture 21
+    Given our input data, labels, and training weights, construct graphs with
+    the KNN algorithm
     """
-    weight_tensor = torch.tensor(weights, dtype=torch.float32)
+
+    # Convert data to PyTorch tensors and move to the appropriate device
+    data_tensor = torch.tensor(data, dtype=torch.float).to(device)
+    labels_tensor = torch.tensor(labels, dtype=torch.long).to(device)
+    weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
+
+    # Standardize the data (mean=0, std=1)
+    mean = data_tensor.mean(dim=0, keepdim=True)
+    std = data_tensor.std(dim=0, keepdim=True)
+    data_tensor = (data_tensor - mean) / std
+
+    # Create a dataset and dataloader for batch processing
+    dataset = TensorDataset(data_tensor, labels_tensor, weights_tensor)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
     graphs = []
-    for i in range(len(labels)):
-        x = torch.tensor(data[i].T, dtype=torch.float)
-        label = torch.tensor([int(labels[i])], dtype=torch.long)
-        edge_index = knn_graph(x, k=k, loop=False)
-        graph = WeightedData(x=x, edge_index=edge_index, y=label, weight=weight_tensor[i])
-        graphs.append(graph)
+    for data, label, weight in loader:
+        x = data.transpose(1, 2)  # Ensure data is in the correct shape (N, C, num_features)
+
+        # Construct graphs for each sample in the batch
+        for i in range(x.size(0)):
+            edge_index = knn_graph(x[i], k=k, loop=False)
+            graph = WeightedData(weight=weight[i], x=x[i], edge_index=edge_index, y=label[i].unsqueeze(0))
+            graphs.append(graph)
 
     return graphs
 
