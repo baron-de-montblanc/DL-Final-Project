@@ -2,3 +2,5 @@ test.h5
 train.h5
 val.h5
 __pycache__/
+.ipynb_checkpoints/
+.gitignore
