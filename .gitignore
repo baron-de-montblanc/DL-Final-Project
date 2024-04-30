@@ -3,3 +3,4 @@ train.h5
 val.h5
 __pycache__/
 Qu_2020.pdf
+.gitignore

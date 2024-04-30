@@ -67,17 +67,37 @@ def features_by_attribute(attribute):
 
 
 
-
-
-def diffuse(data, **kwargs):
+def diffuse(data, all_features, noise_std=1, apply_features=None):
     """
-    Given input data (e.g. output of preprocess.extract) and keyword arguments,
-    diffuse high quality input to lower quality
+    Given input data (e.g., output of preprocess.get_data) and keyword arguments,
+    diffuse high quality input to lower quality by adding Gaussian noise to specified features.
+
+    data: numpy array of shape [INPUT_SIZE, NUM_FEATURES, NUM_CONSTITUENTS] or [INPUT_SIZE, NUM_FEATURES]
+    noise_std: desired noise standard deviation for the diffusion
+    all_features: list of all features (ordered wrt data) of shape [NUM_FEATURES]
+    apply_features: list of features to apply diffusion on
     """
+    # Create a copy of the data to avoid inplace contamination
+    data_copy = np.copy(data)
+
+    # Next, replace zeros (which aren't physically relevant as they just correspond to missing data) with NaN
+    data_copy = np.where(data_copy == 0, np.nan, data_copy)
     
+    use_features = all_features if apply_features is None else apply_features
 
-    # TODO: Apply diffusion to input data
+    for f in use_features:
+        f_idx = np.where(all_features == f)[0][0]
 
+        if data_copy.ndim == 3:
+            data_copy[:, f_idx, :] += np.random.normal(loc=0.0, scale=noise_std, size=data_copy[:, f_idx, :].shape)
 
-    reduced_data = None
-    return reduced_data
+        elif data_copy.ndim == 2:
+            data_copy[:, f_idx] += np.random.normal(loc=0.0, scale=noise_std, size=data_copy[:, f_idx].shape)
+
+        else:
+            raise ValueError("diffuse doesn't apply to high-level data. Try jet or constituents.")
+
+    # Finally, add the zeros back in to correctly handle missing values
+    data_copy = np.nan_to_num(data_copy)
+
+    return data_copy

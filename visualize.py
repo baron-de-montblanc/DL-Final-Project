@@ -20,11 +20,11 @@ def plot_1D_distributions(data, labels, features, nbins):
 
     # Dynamic range of x depending on feature (hard-coded)
     if 'fjet_clus_pt' not in features:
-        xmin = [0,-2.5,-4,0]
-        xmax = [5e6,2.5,4,5e5]
+        xmin = [-2.5,0,-4,0]
+        xmax = [2.5,5e5,4,5e6]
     else:
-        xmin = [0,-4,-4,0]
-        xmax = [5,4,4,5]
+        xmin = [-4,-4,-4,-4]
+        xmax = [4,4,4,4]
 
     xlabels = ["MeV", "rad", "rad", "MeV"]
 
@@ -51,8 +51,12 @@ def plot_1D_distributions(data, labels, features, nbins):
             d_zero = d_zero[d_zero != 0]
 
             # Plotting
-            axes[i,j].hist(d_one, bins=nbins, density=True, alpha=0.8, color=c1, range=(xmin[f_idx],xmax[f_idx]))
-            axes[i,j].hist(d_zero, bins=nbins, density=True, alpha=0.8, color=c2, range=(xmin[f_idx],xmax[f_idx]))
+            axes[i,j].hist(d_one, bins=nbins, density=True, alpha=0.8, color=c1, 
+                           range=(xmin[f_idx],xmax[f_idx]),
+                           )
+            axes[i,j].hist(d_zero, bins=nbins, density=True, alpha=0.8, color=c2, 
+                           range=(xmin[f_idx],xmax[f_idx]),
+                           )
             axes[i,j].set_title(f'Distribution of {human_feature(f)} by label')
             axes[i,j].set_xlabel(f"{human_feature(f)} ({xlabels[f_idx]})")
             axes[i,j].set_ylabel('Density')
@@ -63,31 +67,29 @@ def plot_1D_distributions(data, labels, features, nbins):
 
 
 
-
-def plot_loss(loss_list, val_loss_list):
-
-    # Visualize loss progression
-    plt.figure(figsize=(6,4))
-    plt.plot(loss_list, label="Training loss")
-    plt.plot(val_loss_list, label="Validation loss")
-
-    plt.title("BCE Loss as a Function of Epoch", y=1.02)
-    plt.xlabel("Epoch number")
-    plt.ylabel("Loss")
-    plt.legend()
+def plot_loss_and_accuracy(loss_list, val_loss_list, acc_list, val_acc_list):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    
+    # Plot training and validation loss on the first subplot
+    ax1.plot(loss_list, label="Training loss")
+    ax1.plot(val_loss_list, label="Validation loss")
+    ax1.set_title("Loss Progression")
+    ax1.set_xlabel("Epoch number")
+    ax1.set_ylabel("Loss")
+    ax1.legend()
+    
+    # Plot training and validation accuracy on the second subplot
+    ax2.plot(acc_list, label="Training accuracy")
+    ax2.plot(val_acc_list, label="Validation accuracy")
+    ax2.set_title("Accuracy Progression")
+    ax2.set_xlabel("Epoch number")
+    ax2.set_ylabel("Accuracy")
+    ax2.legend()
+    
+    # Show the plot
+    plt.tight_layout()
     plt.show()
 
-
-def plot_accuracy(acc_list, val_acc_list):
-    plt.figure(figsize=(6,4))
-    plt.plot(acc_list, label="Training accuracy")
-    plt.plot(val_acc_list, label="Validation accuracy")
-
-    plt.title("Binary Accuracy as a Function of Epoch", y=1.02)
-    plt.xlabel("Epoch number")
-    plt.ylabel("Binary Accuracy")
-    plt.legend()
-    plt.show()
 
 
 def plot_confusion_matrices(labels, preds, model_name):
@@ -100,6 +102,44 @@ def plot_confusion_matrices(labels, preds, model_name):
     plt.xlabel('Predicted labels')
     plt.ylabel('True labels')
     plt.show()
+
+
+
+def plot_diffused_histogram(original, diffused, all_features, plot_feature, xrange=None):
+    """
+    Given the original and the diffused data, plot the 1D histogram
+    that highlights the difference
+
+    feature: name of feature being viewed
+    xrange: defaults to None to see the full graph extent; else should be a tuple of ints
+    """
+    # Index only the desired feature
+    f_idx = np.where(all_features == plot_feature)[0][0]
+
+    original = original[:,f_idx,:]
+    diffused = diffused[:,f_idx,:]
+
+    # Get rid of zeros since they mostly aren't real
+    original = original[original != 0]
+    diffused = diffused[diffused != 0]
+
+    plt.figure(figsize=(6,4))
+    plt.hist(original.flatten(), bins=30, color=sns.color_palette()[0], 
+             alpha=0.7, range=xrange, label="Undiffused", density=True
+             )
+    plt.hist(diffused.flatten(), bins=30, color=sns.color_palette()[2], 
+             alpha=0.7, range=xrange, label="Diffused", density=True
+             )
+    
+    plt.ylabel("Density")
+    plt.xlabel(human_feature(plot_feature))
+    plt.title("Density of "+human_feature(plot_feature)+" before and after diffusion",y=1.02)
+    plt.legend()
+    plt.show()
+
+
+
+# ---------------------- GNN-specific -------------------------------------------------
 
 
 
