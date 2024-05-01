@@ -6,6 +6,7 @@ from torch.utils.data import TensorDataset, random_split, Subset
 from torch_geometric.nn import knn_graph
 from torch_geometric.data import Data, DataLoader
 from helper import features_by_attribute
+from tqdm import tqdm
 
 
 # ----------- Preprocessing Pipeline for the ATLAS Jet Tagging Dataset ---------------
@@ -150,14 +151,14 @@ def prepare_graphs(data, labels, weights, k, device, batch_size=64):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     graphs = []
-    for data, label, weight in loader:
+    for data, label, weight in tqdm(loader):
         x = data.transpose(1, 2)  # Ensure data is in the correct shape (N, C, num_features)
 
         # Construct graphs for each sample in the batch
         for i in range(x.size(0)):
             edge_index = knn_graph(x[i], k=k, loop=False)
             graph = WeightedData(weight=weight[i], x=x[i], edge_index=edge_index, y=label[i].unsqueeze(0))
-            graphs.append(graph)
+            graphs.append(graph.to("cpu"))  # for memory management, don't store these on GPU
 
     return graphs
 

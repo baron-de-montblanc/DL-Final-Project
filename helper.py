@@ -5,6 +5,16 @@ import numpy as np
 # ------------------------ Some helper functions for this project -------------------------
 
 
+def time_elapsed(t0,t):
+    """
+    print time elapsed between t0 and t, where t0 and t are time.time() instances
+    """
+    delta_t = t-t0
+    
+    t_mins = round(delta_t/60, 2)
+    
+    return t_mins
+
 
 def human_feature(feature):
     """
