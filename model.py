@@ -252,8 +252,6 @@ def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
         
         total_loss += weighted_loss.item()
 
-        print(output)
-        
         _, preds = torch.max(output, dim=1)
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(data.y.cpu().numpy())
