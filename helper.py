@@ -99,7 +99,7 @@ def diffuse(data, all_features, noise_std=1, apply_features=None):
         f_idx = np.where(all_features == f)[0][0]
 
         if data_copy.ndim == 3:
-            data_copy[:, f_idx, :] += np.random.normal(loc=0.0, scale=noise_std, size=data_copy[:, f_idx, :].shape)
+            data_copy[:, :, f_idx] += np.random.normal(loc=0.0, scale=noise_std, size=data_copy[:, :, f_idx].shape)
 
         elif data_copy.ndim == 2:
             data_copy[:, f_idx] += np.random.normal(loc=0.0, scale=noise_std, size=data_copy[:, f_idx].shape)
