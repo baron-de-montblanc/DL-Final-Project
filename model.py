@@ -25,7 +25,7 @@ class JetFCNN(nn.Module):
         self.hidden_bns = nn.ModuleList([nn.BatchNorm1d(400) for _ in range(num_hidden_layers)])
 
         # "constants"
-        self.out = nn.Linear(400, 1)
+        self.out = nn.Linear(400, 2)
         self.activ = nn.ReLU()
         self.drop = nn.Dropout(dropout_rate)
 
@@ -50,7 +50,7 @@ class JetFCNN(nn.Module):
             x = self.drop(x)
 
         x = self.out(x)
-        return torch.sigmoid(x)
+        return x
     
 
 # --------------- Define GNN Model -----------------------
@@ -132,93 +132,78 @@ class JetGNN(torch.nn.Module):
 # ------------------------- Define training and testing loops (FCNN) ------------------
 
 
-def train_one_epoch(model, device, train_loader, optimizer, criterion):
-    model.train()
-
-    total_loss = 0
-    correct_predictions = 0
-    total_samples = 0
-
-    for data, target, weights in train_loader:
-        data, target, weights = data.to(device), target.to(device), weights.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-
-        output = output.squeeze(1)  # flatten the output
-
-        loss = criterion(output, target.float())
-        weighted_loss = (loss * weights).mean()  # Apply weights and average
-        weighted_loss.backward()
-        optimizer.step()
-
-        total_loss += weighted_loss.item()
-        
-        # Manually calculate binary accuracy
-        predicted = (output >= 0.5).float()
-        correct_predictions += (predicted == target).sum().item()
-        total_samples += target.size(0)
-
-    avg_loss = total_loss/len(train_loader)
-    avg_acc = correct_predictions / total_samples
-    return avg_loss, avg_acc
-
-
-
-def test(model, device, test_loader, criterion):
-    model.eval()
-
-    total_loss = 0
-    correct_predictions = 0
-    total_samples = 0
-
-    with torch.no_grad():
-      for data, target, weights in test_loader:
-        data, target, weights = data.to(device), target.to(device), weights.to(device)
-
-        output = model(data)
-        output = output.squeeze(1)  # flatten the output
-        loss = criterion(output, target.float())
-        weighted_loss = (loss * weights).mean()
-
-        total_loss += weighted_loss.item()
-        
-        # Manually calculate binary accuracy
-        predicted = (output >= 0.5).float()
-        correct_predictions += (predicted == target).sum().item()
-        total_samples += target.size(0)
-
-    avg_loss = total_loss/len(test_loader)
-    avg_acc = correct_predictions / total_samples
-    return avg_loss, avg_acc
-
-
-
-# ------------------------- Define training and testing loops (GNN) ------------------
-
-
-def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
-    model.train()
+def run_fcnn(model, device, data_loader, criterion, optimizer=None, train=False):
+    if train:
+        model.train()
+    else:
+        model.eval()
 
     total_loss = 0
     all_labels, all_preds = [], []
 
-    for data in train_loader:
-        data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
-        optimizer.zero_grad()
-        
-        output = model(data)
-        
-        loss = criterion(output, target)
-        weighted_loss = (loss * weights).mean()  # Apply weights and average
+    with torch.set_grad_enabled(train):
+        for data, target, weights in data_loader:
+            data, target, weights = data.to(device), target.to(device), weights.to(device)
 
+            if train:
+                optimizer.zero_grad()
+
+            output = model(data)
+            # output = output.squeeze(1)  # Flatten the output
+            loss = criterion(output, target)
+            weighted_loss = (loss * weights).mean()
+
+            if train:
+                weighted_loss.backward()
+                optimizer.step()
+
+            total_loss += weighted_loss.item()
+
+            _, preds = torch.max(output, dim=1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(target.cpu().numpy())
+
+    avg_loss = total_loss / len(data_loader)
+    avg_acc = accuracy_score(all_labels, all_preds)
+
+    return avg_loss, avg_acc
+
+
+
+def train_fcnn_with_distillation(student_model, teacher_model, train_loader, criterion, optimizer, device, alpha=0.5, temperature=2.0):
+    teacher_model.eval()
+    student_model.train()
+
+    total_loss = 0
+    all_labels, all_preds = [], []
+
+    for data, target, weights in train_loader:
+        data, target, weights = data.to(device), target.to(device), weights.to(device)
+
+        # Teacher model's output
+        with torch.no_grad():
+            soft_labels = teacher_model(data)
+            soft_labels = F.softmax(soft_labels / temperature, dim=1)
+
+        # Student model's output
+        outputs = student_model(data)
+        soft_outputs = F.log_softmax(outputs / temperature, dim=1)
+
+        # Calculate loss
+        loss_hard = criterion(outputs, target)  # Hard label loss
+        loss_soft = F.kl_div(soft_outputs, soft_labels.detach(), reduction='batchmean')  # Soft label loss
+
+        loss = alpha * loss_hard + (1 - alpha) * temperature * temperature * loss_soft  # Total loss, scaled by temperature^2 as in Hinton's paper
+        weighted_loss = (loss * weights).mean()  # Apply weights and average
+        optimizer.zero_grad()
         weighted_loss.backward()
         optimizer.step()
-        
+
         total_loss += weighted_loss.item()
 
-        _, preds = torch.max(output, dim=1)
+        _, preds = torch.max(outputs, dim=1)
         all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(data.y.cpu().numpy())
+        all_labels.extend(target.cpu().numpy())
 
     avg_loss = total_loss / len(train_loader)
     avg_acc = accuracy_score(all_labels, all_preds)
@@ -227,28 +212,85 @@ def train_one_epoch_gnn(model, device, train_loader, optimizer, criterion):
 
 
 
-def test_gnn(model, device, test_loader, criterion):
-    model.eval()
+# ------------------------- Define training and testing loops (GNN) ------------------
+
+
+
+def run_gnn(model, device, data_loader, criterion, optimizer=None, train=False):
+    if train:
+        model.train()
+    else:
+        model.eval()
 
     total_loss = 0
     all_labels, all_preds = [], []
 
-    with torch.no_grad():
-        for data in test_loader:
+    with torch.set_grad_enabled(train):
+        for data in data_loader:
             data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
-            
+
+            if train:
+                optimizer.zero_grad()
+
             output = model(data)
 
             loss = criterion(output, target)
-            weighted_loss = (loss * weights).mean()  # Apply weights and average
+            weighted_loss = (loss * weights).mean()
+
+            if train:
+                weighted_loss.backward()
+                optimizer.step()
 
             total_loss += weighted_loss.item()
 
             _, preds = torch.max(output, dim=1)
             all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(data.y.cpu().numpy())
+            all_labels.extend(target.cpu().numpy())
 
-    avg_loss = total_loss/len(test_loader)
+    avg_loss = total_loss / len(data_loader)
     avg_acc = accuracy_score(all_labels, all_preds)
 
     return avg_loss, avg_acc
+
+
+
+def train_gnn_with_distillation(student_model, teacher_model, train_loader, criterion, optimizer, device, alpha=0.5, temperature=2.0):
+    teacher_model.eval()
+    student_model.train()
+
+    total_loss = 0
+    all_labels, all_preds = [], []
+
+    for data in train_loader:
+        data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
+
+        # Teacher model's output
+        with torch.no_grad():
+            soft_labels = teacher_model(data)
+            soft_labels = F.softmax(soft_labels / temperature, dim=1)
+
+        # Student model's output
+        outputs = student_model(data)
+        soft_outputs = F.log_softmax(outputs / temperature, dim=1)
+
+        # Calculate loss
+        loss_hard = criterion(outputs, target)  # Hard label loss
+        loss_soft = F.kl_div(soft_outputs, soft_labels.detach(), reduction='batchmean')  # Soft label loss
+
+        loss = alpha * loss_hard + (1 - alpha) * temperature * temperature * loss_soft  # Total loss, scaled by temperature^2 as in Hinton's paper
+        weighted_loss = (loss * weights).mean()  # Apply weights and average
+        optimizer.zero_grad()
+        weighted_loss.backward()
+        optimizer.step()
+
+        total_loss += weighted_loss.item()
+
+        _, preds = torch.max(outputs, dim=1)
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(target.cpu().numpy())
+
+    avg_loss = total_loss / len(train_loader)
+    avg_acc = accuracy_score(all_labels, all_preds)
+
+    return avg_loss, avg_acc
+

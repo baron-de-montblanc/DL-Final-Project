@@ -111,3 +111,30 @@ def diffuse(data, all_features, noise_std=1, apply_features=None):
     data_copy = np.nan_to_num(data_copy)
 
     return data_copy
+
+
+
+def add_constits(data, target_shape):
+    """
+    Given a data of shape [input_size, num_constits, num_features], add some zeros to obtain the desired
+    [input_size, target_shape, num_features] where num_constits < target_shape
+
+    Parameters:
+    data (numpy.ndarray): Input array of shape [input_size, num_features]. (example 40)
+
+    Returns:
+    numpy.ndarray: Modified array of shape [input_size, num_features, 80]. (example 80)
+    """
+
+    # Calculate how many zeros to add to each side of the last dimension
+    current_last_dim = data.shape[1]
+    pad_width = target_shape - current_last_dim
+    
+    # Validate that the pad_width is non-negative
+    if pad_width < 0:
+        raise ValueError(f"target_shape ({target_shape}) must be greater than the current middle dimension size ({current_last_dim}).")
+    
+    # Use np.pad to add zeros at the end of the last dimension
+    padded_data = np.pad(data, pad_width=((0, 0), (0, pad_width), (0, 0)), mode='constant', constant_values=0)
+    
+    return padded_data
