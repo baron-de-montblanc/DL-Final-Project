@@ -23,8 +23,8 @@ def plot_1D_distributions(data, labels, features, nbins):
         xmin = [-2.5,0,-4,0]
         xmax = [2.5,5e5,4,5e6]
     else:
-        xmin = [-4,-4,-4,-4]
-        xmax = [4,4,4,4]
+        xmin = [0,-4,-4,0]
+        xmax = [2e4,4,4,2e4]
 
     xlabels = ["MeV", "rad", "rad", "MeV"]
 
@@ -37,7 +37,10 @@ def plot_1D_distributions(data, labels, features, nbins):
             f_idx = int(2*i+j)
 
             f = features[f_idx]
-            d = data[:,f_idx]
+            if 'fjet_clus_pt' not in features:
+                d = data[:,f_idx]
+            else:
+                d = data[:,:,f_idx]
 
             # Separate by labels
             one_labels = labels.astype(bool)
@@ -51,10 +54,10 @@ def plot_1D_distributions(data, labels, features, nbins):
             d_zero = d_zero[d_zero != 0]
 
             # Plotting
-            axes[i,j].hist(d_one, bins=nbins, density=True, alpha=0.8, color=c1, 
+            axes[i,j].hist(d_one.flatten(), bins=nbins, density=True, alpha=0.8, color=c1, 
                            range=(xmin[f_idx],xmax[f_idx]),
                            )
-            axes[i,j].hist(d_zero, bins=nbins, density=True, alpha=0.8, color=c2, 
+            axes[i,j].hist(d_zero.flatten(), bins=nbins, density=True, alpha=0.8, color=c2, 
                            range=(xmin[f_idx],xmax[f_idx]),
                            )
             axes[i,j].set_title(f'Distribution of {human_feature(f)} by label')
@@ -165,8 +168,8 @@ def plot_diffused_histogram(original, diffused, all_features, plot_feature, xran
     # Index only the desired feature
     f_idx = np.where(all_features == plot_feature)[0][0]
 
-    original = original[:,f_idx,:]
-    diffused = diffused[:,f_idx,:]
+    original = original[:,:,f_idx]
+    diffused = diffused[:,:,f_idx]
 
     # Get rid of zeros since they mostly aren't real
     original = original[original != 0]

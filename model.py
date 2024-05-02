@@ -12,19 +12,20 @@ from sklearn.metrics import roc_curve, auc, accuracy_score
 # --------------- Define FCNN Models -----------------------
 
 
-class TeacherFCNN(nn.Module):
+class JetFCNN(nn.Module):
 
-    def __init__(self, num_features, dropout_rate=0.4):
-        super(TeacherFCNN, self).__init__()
+    def __init__(self, num_features, num_hidden_layers=2, dropout_rate=0.1):
+        super(JetFCNN, self).__init__()
 
         self.fc1 = nn.Linear(num_features, 400)
+        self.bn1 = nn.BatchNorm1d(400)
 
         # hidden layers
         self.fch = nn.Linear(400, 400)
+        self.hidden_bns = nn.ModuleList([nn.BatchNorm1d(400) for _ in range(num_hidden_layers)])
 
         # "constants"
         self.out = nn.Linear(400, 1)
-        self.bn = nn.BatchNorm1d(400)
         self.activ = nn.ReLU()
         self.drop = nn.Dropout(dropout_rate)
 
@@ -38,67 +39,30 @@ class TeacherFCNN(nn.Module):
         x = x.view(x.size(0), -1)
 
         x = self.fc1(x)
-        x = self.bn(x)
+        x = self.bn1(x)
         x = self.activ(x)
         x = self.drop(x)
 
-        x = self.fch(x)
-        x = self.bn(x)
-        x = self.activ(x)
-        x = self.drop(x)
-
-        x = self.fch(x)
-        x = self.bn(x)
-        x = self.activ(x)
-        x = self.drop(x)
+        for i in range(len(self.hidden_bns)):
+            x = self.fch(x)
+            x = self.hidden_bns[i](x)
+            x = self.activ(x)
+            x = self.drop(x)
 
         x = self.out(x)
         return torch.sigmoid(x)
     
 
-
-class StudentFCNN(nn.Module):
-
-    def __init__(self, num_features, dropout_rate=0.4):
-        super(StudentFCNN, self).__init__()
-        self.fc1 = nn.Linear(num_features, 256)
-        self.bn1 = nn.BatchNorm1d(256)
-        self.drop1 = nn.Dropout(dropout_rate)
-
-        self.fc2 = nn.Linear(256, 128)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.drop2 = nn.Dropout(dropout_rate)
-
-        self.fc3 = nn.Linear(128, 1)
-        self.activ = nn.LeakyReLU()
-
-    def forward(self, x):
-        # Flatten if necessary
-        x = x.view(x.size(0), -1)
-
-        x = self.fc1(x)
-        x = self.bn1(x)
-        x = self.activ(x)
-        x = self.drop1(x)
-
-        x = self.fc2(x)
-        x = self.bn2(x)
-        x = self.activ(x)
-        x = self.drop2(x)
-
-        x = torch.sigmoid(self.fc3(x))
-        return x
+# --------------- Define GNN Model -----------------------
 
 
-# --------------- Define GNN Models -----------------------
-
-
-class TeacherGNN(torch.nn.Module):
+class JetGNN(torch.nn.Module):
     """
     Adapted from the PHYS 2550 Hands-On Session for Lecture 21
+    + Architecture borrowed from Jet Tagging via Particle Clouds
     """
     def __init__(self):
-        super(TeacherGNN, self).__init__()
+        super(JetGNN, self).__init__()
         # The input feature dimension is 7 (preprocessed features)
         # Ensure the MLP inside EdgeConv correctly transforms input features
         
@@ -163,20 +127,6 @@ class TeacherGNN(torch.nn.Module):
         x = self.out(x)
 
         return x
-
-
-
-class StudentGNN(nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        # TODO: Initialize layers and hyperparameters
-        pass
-
-    def forward(self, x):
-
-        # TODO: initiate one forward pass
-        pass
 
 
 # ------------------------- Define training and testing loops (FCNN) ------------------

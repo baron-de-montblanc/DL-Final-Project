@@ -28,12 +28,14 @@ def list_contents(group, prefix=''):
             print(f' - Dataset shape: {item.shape}, Dataset type: {item.dtype}')
 
 
-def get_data(filename, attribute, verbose=False):
+def get_data(filename, attribute, max_items=None, verbose=False):
     """
     Given the h5 file containing the ATLAS data, extract all the data corresponding
     to the appropriate attribute
 
     Allowed values for attribute are: 'jet', 'constituents', and 'high_level'
+    
+    max_items: maximum number of elements to return (int; default None for the full dataset)
 
     Return the data, labels, weights, and feature names
     """
@@ -49,15 +51,16 @@ def get_data(filename, attribute, verbose=False):
         for key in f.keys():
 
             if key in use_keys:
-                data.append(f[key][:])
+                data.append(f[key][:max_items])
                 ordered_keys.append(key)
                 
         try:  # the column name here isn't always consistent
-            weights = np.asarray(f["training_weights"][:])
-        except:
-            weights = np.asarray(f["weights"][:])
+            weights = np.asarray(f["training_weights"][:max_items])
             
-        labels = np.asarray(f["labels"][:])
+        except:
+            weights = np.asarray(f["weights"][:max_items])
+            
+        labels = np.asarray(f["labels"][:max_items])
 
     if attribute == "jet":
         data = np.asarray(data).T
@@ -65,7 +68,7 @@ def get_data(filename, attribute, verbose=False):
     elif attribute == "constituents":
         data = np.asarray(data)
         # reshape to make sure the input_size is first
-        data = np.reshape(data, (data.shape[1],data.shape[0],data.shape[2]))
+        data = data.transpose(1,2,0)
 
     return data, labels, weights, np.asarray(ordered_keys)
 
@@ -94,10 +97,10 @@ def constituent_preprocess(data, features, max_constits=None):
     ############################## Load Data ###################################
 
     # Pull data from data dict
-    pt = data[:,np.where(features=='fjet_clus_pt')[0][0],:]
-    eta = data[:,np.where(features=='fjet_clus_eta')[0][0],:]
-    phi = data[:,np.where(features=='fjet_clus_phi')[0][0],:]
-    energy = data[:,np.where(features=='fjet_clus_E')[0][0],:]
+    pt = data[:,:max_constits,np.where(features=='fjet_clus_pt')[0][0]]
+    eta = data[:,:max_constits,np.where(features=='fjet_clus_eta')[0][0]]
+    phi = data[:,:max_constits,np.where(features=='fjet_clus_phi')[0][0]]
+    energy = data[:,:max_constits,np.where(features=='fjet_clus_E')[0][0]]
 
     # Find location of zero pt entries in each jet. This will be used as a
     # mask to re-zero out entries after all preprocessing steps
@@ -203,10 +206,10 @@ def standardize_split(data, labels, weights, train_split, val_split, seed=None):
     labels = torch.tensor(labels, dtype=torch.long)
     weights = torch.tensor(weights, dtype=torch.float32)  # Ensure weights are also a tensor
 
-    # Standardization (mean=0, std=1)
-    mean = torch.mean(data, dim=0)
-    std = torch.std(data, dim=0)
-    data = (data - mean) / std
+#     # Standardization (mean=0, std=1)
+#     mean = torch.mean(data, dim=0)
+#     std = torch.std(data, dim=0)
+#     data = (data - mean) / std
 
     # get rid of NaNs and infs --> cast to zeros
     data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
@@ -257,10 +260,13 @@ def prepare_graphs(data, labels, weights, k, device, batch_size=64):
     labels_tensor = torch.tensor(labels, dtype=torch.long).to(device)
     weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
 
-    # Standardize the data (mean=0, std=1)
-    mean = data_tensor.mean(dim=0, keepdim=True)
-    std = data_tensor.std(dim=0, keepdim=True)
-    data_tensor = (data_tensor - mean) / std
+#     # Standardize the data (mean=0, std=1)
+#     mean = data_tensor.mean(dim=0, keepdim=True)
+#     std = data_tensor.std(dim=0, keepdim=True)
+#     data_tensor = (data_tensor - mean) / std
+
+    # get rid of NaNs and infs --> cast to zeros
+    data_tensor = torch.nan_to_num(data_tensor, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Create a dataset and dataloader for batch processing
     dataset = TensorDataset(data_tensor, labels_tensor, weights_tensor)
