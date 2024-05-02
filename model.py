@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+import torch.nn.init as init
 from torch.nn import Sequential, Linear, ReLU, BatchNorm1d
 from torch_geometric.nn import EdgeConv, global_max_pool
 from sklearn.metrics import roc_curve, auc, accuracy_score
@@ -14,33 +16,44 @@ class TeacherFCNN(nn.Module):
 
     def __init__(self, num_features, dropout_rate=0.4):
         super(TeacherFCNN, self).__init__()
-        self.fc1 = nn.Linear(num_features, 256)
-        self.bn1 = nn.BatchNorm1d(256)
-        self.drop1 = nn.Dropout(dropout_rate)
 
-        self.fc2 = nn.Linear(256, 128)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.drop2 = nn.Dropout(dropout_rate)
+        self.fc1 = nn.Linear(num_features, 400)
 
-        self.fc3 = nn.Linear(128, 1)
-        self.activ = nn.LeakyReLU()
+        # hidden layers
+        self.fch = nn.Linear(400, 400)
+
+        # "constants"
+        self.out = nn.Linear(400, 1)
+        self.bn = nn.BatchNorm1d(400)
+        self.activ = nn.ReLU()
+        self.drop = nn.Dropout(dropout_rate)
+
+        # Initialize weights using Glorot Uniform (Xavier Uniform)
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.fch.weight)
+        init.xavier_uniform_(self.out.weight)
 
     def forward(self, x):
         # Flatten if necessary
         x = x.view(x.size(0), -1)
 
         x = self.fc1(x)
-        x = self.bn1(x)
+        x = self.bn(x)
         x = self.activ(x)
-        x = self.drop1(x)
+        x = self.drop(x)
 
-        x = self.fc2(x)
-        x = self.bn2(x)
+        x = self.fch(x)
+        x = self.bn(x)
         x = self.activ(x)
-        x = self.drop2(x)
+        x = self.drop(x)
 
-        x = torch.sigmoid(self.fc3(x))
-        return x
+        x = self.fch(x)
+        x = self.bn(x)
+        x = self.activ(x)
+        x = self.drop(x)
+
+        x = self.out(x)
+        return torch.sigmoid(x)
     
 
 
@@ -86,12 +99,12 @@ class TeacherGNN(torch.nn.Module):
     """
     def __init__(self):
         super(TeacherGNN, self).__init__()
-        # The input feature dimension is 4 ('clus_pt', 'clus_eta', 'clus_phi', 'clus_E')
+        # The input feature dimension is 7 (preprocessed features)
         # Ensure the MLP inside EdgeConv correctly transforms input features
         
         self.conv1 = EdgeConv(
             Sequential(
-                Linear(2*4, 64),
+                Linear(2*7, 64),
                 BatchNorm1d(64),
                 ReLU(), 
                 Linear(64, 64),
@@ -180,6 +193,7 @@ def train_one_epoch(model, device, train_loader, optimizer, criterion):
         data, target, weights = data.to(device), target.to(device), weights.to(device)
         optimizer.zero_grad()
         output = model(data)
+
         output = output.squeeze(1)  # flatten the output
 
         loss = criterion(output, target.float())

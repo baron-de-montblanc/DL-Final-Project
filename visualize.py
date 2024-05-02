@@ -67,6 +67,55 @@ def plot_1D_distributions(data, labels, features, nbins):
 
 
 
+
+def plot_preprocessed_1D_distributions(data, labels, features, nbins):
+    """
+    Plot histograms of our preprocessed data (constituent-level only)
+    """
+
+    fig, axes = plt.subplots(2, 3, figsize=(10, 6))
+
+    # Set colors (for aesthetic purposes!)
+    c1 = sns.color_palette()[2]
+    c2 = sns.color_palette()[0]
+
+    for i in range(2):
+        for j in range(3):
+            f_idx = int(2*i+j)
+
+            f = features[f_idx]
+            d = data[:,f_idx]
+
+            # Separate by labels
+            one_labels = labels.astype(bool)
+            zero_labels = np.invert(one_labels)
+
+            d_one = d[one_labels].flatten()
+            d_zero = d[zero_labels].flatten()
+
+            # Get rid of zeros (since they most likely just correspond to zero-padded elements)
+            d_one = d_one[d_one != 0]
+            d_zero = d_zero[d_zero != 0]
+
+            # Plotting
+            axes[i,j].hist(d_one, bins=nbins, density=True, alpha=0.8, color=c1, 
+                           range=(-6,2),
+                           )
+            axes[i,j].hist(d_zero, bins=nbins, density=True, alpha=0.8, color=c2, 
+                           range=(-6,2),
+                           )
+            axes[i,j].set_title(f'Distribution of {f} by label')
+            axes[i,j].set_xlabel(f)
+            axes[i,j].set_ylabel('Density')
+            axes[i,j].legend(title='Label', labels=['Top Quark (signal)', 'Background'])
+
+    plt.tight_layout()
+    plt.show()
+
+    
+
+
+
 def plot_loss_and_accuracy(loss_list, val_loss_list, acc_list, val_acc_list):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
     
