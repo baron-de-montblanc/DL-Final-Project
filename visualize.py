@@ -270,27 +270,37 @@ def plot_diffused_histogram(original, diffused, all_features, plot_feature, xran
 
 
 
-def plot_roc(fpr_teacher, tpr_teacher, fpr_student, tpr_student, fpr_distill, tpr_distill):
+def plot_roc(fpr_teacher, tpr_teacher, fpr_student, tpr_student, fpr_distill, tpr_distill, model_name,
+             transparent=False, save_path=None):
     """
     Plot the ROC curve for all three models on the same graph.
+    Includes an option for a transparent background with white text if 'transparent' is True.
     """
-
-    plt.figure(figsize=(6, 4))
+    # Set the style and text color based on transparency
+    if transparent:
+        text_color = 'white'
+        face_color = 'none'
+    else:
+        text_color = 'black'
+        face_color = 'white'
+    
+    plt.figure(figsize=(6, 4), facecolor=face_color)
     
     plt.plot(fpr_teacher, tpr_teacher, label='Teacher (AUC = {:.2f})'.format(auc(fpr_teacher, tpr_teacher)))
     plt.plot(fpr_student, tpr_student, label='Student no distill. (AUC = {:.2f})'.format(auc(fpr_student, tpr_student)))
     plt.plot(fpr_distill, tpr_distill, label='Student with distill. (AUC = {:.2f})'.format(auc(fpr_distill, tpr_distill)))
 
-    plt.plot([0, 1], [0, 1], color='darkgrey', linestyle='--')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves Comparison', y=1.02)
-    plt.legend(loc="lower right")
+    plt.plot([0, 1], [0, 1], color='darkgrey' if not transparent else 'lightgrey', linestyle='--')
+    plt.xlabel('False Positive Rate', color=text_color)
+    plt.ylabel('True Positive Rate', color=text_color)
+    plt.title(f'{model_name} ROC Curves Comparison', y=1.02, color=text_color)
+    plt.legend(loc="lower right", facecolor=face_color)
+    plt.tick_params(axis='both', colors=text_color)
+
+    if save_path:
+        plt.savefig(save_path, dpi=500, bbox_inches='tight')
+        
     plt.show()
-
-
-
-
 
 
 
