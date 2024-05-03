@@ -9,7 +9,7 @@ from torch_geometric.nn import EdgeConv, global_max_pool
 from sklearn.metrics import roc_curve, auc, accuracy_score
 
 
-# --------------- Define FCNN Models -----------------------
+# --------------- Define FCNN Model -----------------------
 
 
 class JetFCNN(nn.Module):
@@ -129,27 +129,34 @@ class JetGNN(torch.nn.Module):
         return x
 
 
-# ------------------------- Define training and testing loops (FCNN) ------------------
+# ------------------------- Define training/eval function ------------------
 
 
-def run_fcnn(model, device, data_loader, criterion, optimizer=None, train=False):
+def run_model(model, model_type, device, data_loader, criterion, optimizer=None, train=False):
     if train:
         model.train()
     else:
         model.eval()
 
     total_loss = 0
-    all_labels, all_preds = [], []
+    all_labels = []
+    all_probs = []
 
     with torch.set_grad_enabled(train):
-        for data, target, weights in data_loader:
+        for batch in data_loader:
+            if model_type == 'fcnn':
+                data, target, weights = batch
+            elif model_type == 'gnn':
+                data, target, weights = batch.x, batch.y, batch.weight
+            else:
+                raise ValueError("Unknown model type provided")
+
             data, target, weights = data.to(device), target.to(device), weights.to(device)
 
             if train:
                 optimizer.zero_grad()
 
             output = model(data)
-            # output = output.squeeze(1)  # Flatten the output
             loss = criterion(output, target)
             weighted_loss = (loss * weights).mean()
 
@@ -159,25 +166,46 @@ def run_fcnn(model, device, data_loader, criterion, optimizer=None, train=False)
 
             total_loss += weighted_loss.item()
 
-            _, preds = torch.max(output, dim=1)
-            all_preds.extend(preds.cpu().numpy())
+            # Compute probabilities from logits using softmax for the positive class
+            probs = F.softmax(output, dim=1).detach().cpu().numpy()[:, 1]
+            all_probs.extend(probs)
             all_labels.extend(target.cpu().numpy())
 
     avg_loss = total_loss / len(data_loader)
-    avg_acc = accuracy_score(all_labels, all_preds)
+    predictions = np.array(all_probs) > 0.5
+    avg_acc = accuracy_score(all_labels, predictions)
 
+    if not train:
+        # Prepare ROC curve data
+        fpr, tpr, _ = roc_curve(all_labels, all_probs)
+
+        return avg_loss, avg_acc, fpr, tpr
+    
     return avg_loss, avg_acc
 
 
 
-def train_fcnn_with_distillation(student_model, teacher_model, train_loader, criterion, optimizer, device, alpha=0.5, temperature=2.0):
+
+# --------------- Define Transfer Learning function -------------------------------------
+
+
+
+def train_with_distillation(student_model, teacher_model, model_type, train_loader, 
+                            criterion, optimizer, device, alpha=0.5, temperature=2.0):
     teacher_model.eval()
     student_model.train()
 
     total_loss = 0
     all_labels, all_preds = [], []
 
-    for data, target, weights in train_loader:
+    for batch in train_loader:
+        if model_type == 'fcnn':
+            data, target, weights = batch
+        elif model_type == 'gnn':
+            data, target, weights = batch.x, batch.y, batch.weight
+        else:
+            raise ValueError("Unknown model type provided")
+
         data, target, weights = data.to(device), target.to(device), weights.to(device)
 
         # Teacher model's output
@@ -192,93 +220,9 @@ def train_fcnn_with_distillation(student_model, teacher_model, train_loader, cri
         # Calculate loss
         loss_hard = criterion(outputs, target)  # Hard label loss
         loss_soft = F.kl_div(soft_outputs, soft_labels.detach(), reduction='batchmean')  # Soft label loss
-
         loss = alpha * loss_hard + (1 - alpha) * temperature * temperature * loss_soft  # Total loss, scaled by temperature^2 as in Hinton's paper
         weighted_loss = (loss * weights).mean()  # Apply weights and average
-        optimizer.zero_grad()
-        weighted_loss.backward()
-        optimizer.step()
 
-        total_loss += weighted_loss.item()
-
-        _, preds = torch.max(outputs, dim=1)
-        all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(target.cpu().numpy())
-
-    avg_loss = total_loss / len(train_loader)
-    avg_acc = accuracy_score(all_labels, all_preds)
-
-    return avg_loss, avg_acc
-
-
-
-# ------------------------- Define training and testing loops (GNN) ------------------
-
-
-
-def run_gnn(model, device, data_loader, criterion, optimizer=None, train=False):
-    if train:
-        model.train()
-    else:
-        model.eval()
-
-    total_loss = 0
-    all_labels, all_preds = [], []
-
-    with torch.set_grad_enabled(train):
-        for data in data_loader:
-            data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
-
-            if train:
-                optimizer.zero_grad()
-
-            output = model(data)
-
-            loss = criterion(output, target)
-            weighted_loss = (loss * weights).mean()
-
-            if train:
-                weighted_loss.backward()
-                optimizer.step()
-
-            total_loss += weighted_loss.item()
-
-            _, preds = torch.max(output, dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(target.cpu().numpy())
-
-    avg_loss = total_loss / len(data_loader)
-    avg_acc = accuracy_score(all_labels, all_preds)
-
-    return avg_loss, avg_acc
-
-
-
-def train_gnn_with_distillation(student_model, teacher_model, train_loader, criterion, optimizer, device, alpha=0.5, temperature=2.0):
-    teacher_model.eval()
-    student_model.train()
-
-    total_loss = 0
-    all_labels, all_preds = [], []
-
-    for data in train_loader:
-        data, target, weights = data.to(device), data.y.to(device), data.weight.to(device)
-
-        # Teacher model's output
-        with torch.no_grad():
-            soft_labels = teacher_model(data)
-            soft_labels = F.softmax(soft_labels / temperature, dim=1)
-
-        # Student model's output
-        outputs = student_model(data)
-        soft_outputs = F.log_softmax(outputs / temperature, dim=1)
-
-        # Calculate loss
-        loss_hard = criterion(outputs, target)  # Hard label loss
-        loss_soft = F.kl_div(soft_outputs, soft_labels.detach(), reduction='batchmean')  # Soft label loss
-
-        loss = alpha * loss_hard + (1 - alpha) * temperature * temperature * loss_soft  # Total loss, scaled by temperature^2 as in Hinton's paper
-        weighted_loss = (loss * weights).mean()  # Apply weights and average
         optimizer.zero_grad()
         weighted_loss.backward()
         optimizer.step()

@@ -5,6 +5,7 @@ import seaborn as sns
 import networkx as nx
 from sklearn.metrics import confusion_matrix
 from helper import human_feature, features_by_attribute
+from sklearn.metrics import auc
 
 
 # ---------------------- Visualize input and/or output ---------------------------------
@@ -267,8 +268,29 @@ def plot_diffused_histogram(original, diffused, all_features, plot_feature, xran
 
     plt.show()
 
-# Example usage:
-# plot_diffused_histogram(original_data, diffused_data, features_list, 'feature_name', xrange=(0, 100), transparent=True)
+
+
+def plot_roc(fpr_teacher, tpr_teacher, fpr_student, tpr_student, fpr_distill, tpr_distill):
+    """
+    Plot the ROC curve for all three models on the same graph.
+    """
+
+    plt.figure(figsize=(6, 4))
+    
+    plt.plot(fpr_teacher, tpr_teacher, label='Teacher (AUC = {:.2f})'.format(auc(fpr_teacher, tpr_teacher)))
+    plt.plot(fpr_student, tpr_student, label='Student no distill. (AUC = {:.2f})'.format(auc(fpr_student, tpr_student)))
+    plt.plot(fpr_distill, tpr_distill, label='Student with distill. (AUC = {:.2f})'.format(auc(fpr_distill, tpr_distill)))
+
+    plt.plot([0, 1], [0, 1], color='darkgrey', linestyle='--')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curves Comparison', y=1.02)
+    plt.legend(loc="lower right")
+    plt.show()
+
+
+
+
 
 
 
