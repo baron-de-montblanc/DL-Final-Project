@@ -202,10 +202,10 @@ def standardize_split(data, labels, weights, train_split, val_split, seed=None):
     labels = torch.tensor(labels, dtype=torch.long)
     weights = torch.tensor(weights, dtype=torch.float32)  # Ensure weights are also a tensor
 
-#     # Standardization (mean=0, std=1)
-#     mean = torch.mean(data, dim=0)
-#     std = torch.std(data, dim=0)
-#     data = (data - mean) / std
+    # Standardization (mean=0, std=1)
+    mean = torch.mean(data, dim=0)
+    std = torch.std(data, dim=0)
+    data = (data - mean) / std
 
     # get rid of NaNs and infs --> cast to zeros
     data = torch.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
@@ -256,10 +256,10 @@ def prepare_graphs(data, labels, weights, k, device, batch_size=64):
     labels_tensor = torch.tensor(labels, dtype=torch.long).to(device)
     weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
 
-#     # Standardize the data (mean=0, std=1)
-#     mean = data_tensor.mean(dim=0, keepdim=True)
-#     std = data_tensor.std(dim=0, keepdim=True)
-#     data_tensor = (data_tensor - mean) / std
+    # Standardize the data (mean=0, std=1)
+    mean = data_tensor.mean(dim=0, keepdim=True)
+    std = data_tensor.std(dim=0, keepdim=True)
+    data_tensor = (data_tensor - mean) / std
 
     # get rid of NaNs and infs --> cast to zeros
     data_tensor = torch.nan_to_num(data_tensor, nan=0.0, posinf=0.0, neginf=0.0)
