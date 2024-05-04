@@ -147,7 +147,7 @@ def run_model(model, model_type, device, data_loader, criterion, optimizer=None,
             if model_type == 'fcnn':
                 data, target, weights = batch
             elif model_type == 'gnn':
-                data, target, weights = batch.x, batch.y, batch.weight
+                data, target, weights = batch, batch.y, batch.weight
             else:
                 raise ValueError("Unknown model type provided")
 
@@ -202,7 +202,7 @@ def train_with_distillation(student_model, teacher_model, model_type, train_load
         if model_type == 'fcnn':
             data, target, weights = batch
         elif model_type == 'gnn':
-            data, target, weights = batch.x, batch.y, batch.weight
+            data, target, weights = batch, batch.y, batch.weight
         else:
             raise ValueError("Unknown model type provided")
 
