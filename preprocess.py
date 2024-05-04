@@ -39,7 +39,11 @@ def get_data(filename, attribute, max_items=None, verbose=False):
 
     Return the data, labels, weights, and feature names
     """
+    high = 10000 if filename=="./data/reduced_atlas_dataset.h5" else 20000000  # for simplicity, will never need >20M
     
+    # randomize the data
+    rand_idx = np.sort(np.random.choice(high, size=max_items, replace=False))
+
     use_keys = features_by_attribute(attribute)
     
     data = []
@@ -51,16 +55,16 @@ def get_data(filename, attribute, max_items=None, verbose=False):
         for key in f.keys():
 
             if key in use_keys:
-                data.append(f[key][:max_items])
+                data.append(f[key][rand_idx])
                 ordered_keys.append(key)
                 
         try:  # the column name here isn't always consistent
-            weights = np.asarray(f["training_weights"][:max_items])
+            weights = np.asarray(f["training_weights"][rand_idx])
             
         except:
-            weights = np.asarray(f["weights"][:max_items])
+            weights = np.asarray(f["weights"][rand_idx])
             
-        labels = np.asarray(f["labels"][:max_items])
+        labels = np.asarray(f["labels"][rand_idx])
 
     if attribute == "jet":
         data = np.asarray(data).T
