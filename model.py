@@ -170,6 +170,50 @@ class JetGNN(torch.nn.Module):
         x = self.out(x)
 
         return x
+    
+
+
+
+class StudentGNN(torch.nn.Module):
+    """
+    Liter version of the JetGNN
+    """
+    def __init__(self):
+        super(StudentGNN, self).__init__()
+        # The input feature dimension is 7 (preprocessed features)
+        # Ensure the MLP inside EdgeConv correctly transforms input features
+        
+        self.conv1 = EdgeConv(
+            Sequential(
+                Linear(2*7, 64),
+                BatchNorm1d(64),
+                ReLU(), 
+                Linear(64, 64),
+                BatchNorm1d(64),
+                ReLU(),
+            ), 
+            aggr='mean')
+        
+        self.fc1 = Linear(128, 128)
+        self.dropout = nn.Dropout(0.1)
+        self.out = Linear(128, 2)
+
+
+    def forward(self, data):
+        
+        x, edge_index = data.x, data.edge_index
+
+        x = F.relu(self.conv1(x, edge_index))
+
+        x = global_max_pool(x, data.batch)
+
+        x = self.dropout(F.relu(self.fc1(x)))
+        x = self.out(x)
+
+        return x
+
+
+
 
 
 # ------------------------- Define training/eval function ------------------
