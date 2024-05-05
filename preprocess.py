@@ -28,53 +28,69 @@ def list_contents(group, prefix=''):
             print(f' - Dataset shape: {item.shape}, Dataset type: {item.dtype}')
 
 
-def get_data(filename, attribute, max_items=None, verbose=False):
+            
+            
+def validate_user(who):
+    """ Validate the user role. """
+    valid_roles = ["Teacher", "Student"]
+    if who not in valid_roles:
+        raise ValueError(f"Valid keys for 'who' are {valid_roles}.")
+
+def get_slice_indices(max_items, who):
+    """ Calculate slice indices based on the user role. """
+    if who == "Teacher":
+        return slice(None, max_items)
+    else:
+        return slice(max_items, int(max_items * 2) if max_items is not None else None)
+
+def fetch_dataset(f, key, idx_slice):
+    """ Fetch and return dataset slices. """
+    return np.asarray(f[key][idx_slice])
+
+def get_data(filename, attribute, max_items=None, verbose=False, who="Teacher"):
     """
-    Given the h5 file containing the ATLAS data, extract all the data corresponding
-    to the appropriate attribute
-
-    Allowed values for attribute are: 'jet', 'constituents', and 'high_level'
+    Extract data from an ATLAS h5 file based on a specified attribute.
     
-    max_items: maximum number of elements to return (int; default None for the full dataset)
-
-    Return the data, labels, weights, and feature names
+    Parameters:
+    - filename (str): Path to the h5 file.
+    - attribute (str): One of 'jet', 'constituents', or 'high_level'.
+    - max_items (int, optional): Maximum number of items to return. Defaults to None (entire dataset).
+    - verbose (bool, optional): If True, prints file contents. Defaults to False.
+    - who (str, optional): Role of the user, either 'Teacher' or 'Student'. Defaults to 'Teacher'.
+    
+    Returns:
+    - tuple: A tuple containing data, labels, weights, and feature names.
     """
-    high = 10000 if filename=="./data/reduced_atlas_dataset.h5" else 20000000  # for simplicity, will never need >20M
     
-    # randomize the data
-    rand_idx = np.sort(np.random.choice(high, size=max_items, replace=False))
-
-    use_keys = features_by_attribute(attribute)
+    validate_user(who)
+    idx_slice = get_slice_indices(max_items, who)
     
     data = []
-    ordered_keys = []  # since the dataset's native ordering differs from mine
+    ordered_keys = []  # maintain a specific order of keys
     with h5py.File(filename, "r") as f:
         if verbose:
-            list_contents(f)
-
-        for key in f.keys():
-
-            if key in use_keys:
-                data.append(f[key][rand_idx])
+            print("File contents:", list(f.keys()))
+        
+        use_keys = features_by_attribute(attribute)
+        
+        for key in use_keys:
+            if key in f:
+                data.append(fetch_dataset(f, key, idx_slice))
                 ordered_keys.append(key)
-                
-        try:  # the column name here isn't always consistent
-            weights = np.asarray(f["training_weights"][rand_idx])
-            
-        except:
-            weights = np.asarray(f["weights"][rand_idx])
-            
-        labels = np.asarray(f["labels"][rand_idx])
 
+        # Handle inconsistent naming for weights
+        weights_key = "training_weights" if "training_weights" in f else "weights"
+        weights = fetch_dataset(f, weights_key, idx_slice)
+        labels = fetch_dataset(f, "labels", idx_slice)
+        
+    # Adjust the data shape based on the attribute
     if attribute == "jet":
-        data = np.asarray(data).T
-
+        data = np.stack(data).T  # transposed for 'jet'
     elif attribute == "constituents":
-        data = np.asarray(data)
-        # reshape to make sure the input_size is first
-        data = data.transpose(1,2,0)
+        data = np.stack(data).transpose(1, 2, 0)  # reshaped for 'constituents'
 
-    return data, labels, weights, np.asarray(ordered_keys)
+    return data, labels, weights, np.array(ordered_keys)
+
 
 
 
