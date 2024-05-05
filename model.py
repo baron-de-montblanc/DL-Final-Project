@@ -53,6 +53,49 @@ class JetFCNN(nn.Module):
         return x
     
 
+
+
+class StudentFCNN(nn.Module):
+
+    def __init__(self, num_features, dropout_rate=0.1):
+        super(StudentFCNN, self).__init__()
+
+        self.fc1 = nn.Linear(num_features, 32)
+        self.bn1 = nn.BatchNorm1d(32)
+
+        # hidden layer
+        self.fch = nn.Linear(32, 64)
+        self.hidden_bn = nn.BatchNorm1d(64)
+
+        # "constants"
+        self.out = nn.Linear(64, 2)
+        self.activ = nn.ReLU()
+        self.drop = nn.Dropout(dropout_rate)
+
+        # Initialize weights using Glorot Uniform (Xavier Uniform)
+        init.xavier_uniform_(self.fc1.weight)
+        init.xavier_uniform_(self.fch.weight)
+        init.xavier_uniform_(self.out.weight)
+
+    def forward(self, x):
+        # Flatten if necessary
+        x = x.view(x.size(0), -1)
+
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.activ(x)
+        x = self.drop(x)
+
+        x = self.fch(x)
+        x = self.hidden_bn(x)
+        x = self.activ(x)
+        x = self.drop(x)
+
+        x = self.out(x)
+        return x
+    
+
+
 # --------------- Define GNN Model -----------------------
 
 
